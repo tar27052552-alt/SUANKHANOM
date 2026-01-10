@@ -3194,22 +3194,30 @@
                 for (const item of cartItems) {
                     const dId = item.dessertId || item.id;
 
-                    console.log(`Checking stock for item: ${item.dessertName} (ID: ${dId})`); // DEBUG
-                    console.log(`Limits for this date:`, limitMap); // DEBUG
-                    console.log(`Default limits:`, defaultLimitMap); // DEBUG
+                    // DEBUG ALERT
+                    // alert(`Debug Stock:\nDate: ${date}\nItem: ${item.dessertName} (ID: ${dId})\nLimitMap: ${JSON.stringify(limitMap)}\nLimit: ${limitMap[dId]}`);
 
                     // Priority: 1. Specific Daily Limit, 2. Default Limit, 3. Unlimited (0)
                     let limit = 0; // Default Unlimited
 
                     if (limitMap[dId] !== undefined) {
                         limit = limitMap[dId]; // Use specific date limit
-                        console.log(`Found specific limit for ID ${dId}: ${limit}`); // DEBUG
+                        console.log(`Found specific limit for ID ${dId}: ${limit}`);
+                    } else if (limitMap[String(dId)] !== undefined) {
+                        limit = limitMap[String(dId)]; // Use specific date limit (String key)
+                        console.log(`Found specific limit for ID ${dId} (String key): ${limit}`);
                     } else if (defaultLimitMap[dId] !== undefined && defaultLimitMap[dId] !== null) {
                         limit = defaultLimitMap[dId]; // Use default limit
-                        console.log(`Found default limit for ID ${dId}: ${limit}`); // DEBUG
+                        console.log(`Found default limit for ID ${dId}: ${limit}`);
                     } else {
-                        console.log(`No limit found for ID ${dId}, using Unlimited (0)`); // DEBUG
+                        console.log(`No limit found for ID ${dId}, using Unlimited (0)`);
                     }
+
+                    console.log(`Checking stock for item: ${item.dessertName} (ID: ${dId})`); // DEBUG
+                    console.log(`Limits for this date:`, limitMap); // DEBUG
+                    console.log(`Default limits:`, defaultLimitMap); // DEBUG
+
+
 
                     // Limit 0 = Unlimited
                     if (limit === 0) continue;
