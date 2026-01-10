@@ -1304,7 +1304,8 @@
                     <label for="reward-active" class="text-sm font-medium text-gray-700">เปิดใช้งานของรางวัลนี้</label>
                 </div>
 
-                <button type="submit" class="w-full btn-primary py-3 rounded-xl shadow-lg">บันทึก</button>
+                <button type="submit" id="save-reward-btn"
+                    class="w-full btn-primary py-3 rounded-xl shadow-lg">บันทึก</button>
             </form>
         </div>
     </div>
@@ -1358,7 +1359,7 @@
             <div class="flex gap-3">
                 <button onclick="toggleModal('add-points-modal', false)"
                     class="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600">ยกเลิก</button>
-                <button onclick="submitAddPoints()"
+                <button onclick="submitAddPoints()" id="submit-points-btn"
                     class="flex-1 py-2 rounded-lg bg-slate-800 text-white font-bold">บันทึก</button>
             </div>
         </div>
@@ -1382,7 +1383,7 @@
             <div class="flex gap-3">
                 <button onclick="toggleModal('give-coupon-modal', false)"
                     class="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600">ยกเลิก</button>
-                <button onclick="submitGiveCoupon()"
+                <button onclick="submitGiveCoupon()" id="submit-give-coupon-btn"
                     class="flex-1 py-2 rounded-lg bg-purple-600 text-white font-bold">มอบรางวัล</button>
             </div>
         </div>
@@ -1422,7 +1423,7 @@
             <div class="flex gap-3">
                 <button onclick="toggleModal('adjust-level-modal', false)"
                     class="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600">ยกเลิก</button>
-                <button onclick="submitAdjustLevel()"
+                <button onclick="submitAdjustLevel()" id="submit-adjust-level-btn"
                     class="flex-1 py-2 rounded-lg bg-indigo-600 text-white font-bold">บันทึก</button>
             </div>
         </div>
@@ -2187,7 +2188,9 @@
             btn.disabled = !(isBaseValid && isToppingValid);
         }
 
-        function addToCart() {
+        async function addToCart() {
+            const btn = document.getElementById("add-to-cart");
+
             // NEW: Check Shop Status here
             if (shopStatus === 'closed') {
                 document.getElementById("shop-closed-overlay").classList.remove("hidden");
@@ -2197,37 +2200,61 @@
             if (hasBases && !selectedBase) return;
             if (hasToppings && !selectedTopping) return;
 
-            const baseName = selectedBase ? selectedBase.name : (hasBases ? "?" : "-");
-            const toppingName = selectedTopping ? selectedTopping.name : (hasToppings ? "?" : "-");
+            // LOCK BUTTON
+            if (btn) {
+                if (btn.disabled) return;
+                btn.disabled = true;
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+                // Simulate small delay if needed or just proceed (since sync action, just locking for rapid clicks)
+                // Actually addToCart is sync, but we use async ID generation potentially in future/animations
+                // For now, locking during the execution stack prevents event bubbling re-triggers if any
+                // But mostly useful if we had async validaton.
+                // Since it's sync, lets minimal-delay to prevent double-click:
+                await new Promise(r => setTimeout(r, 300));
+            }
 
             const baseP = selectedBase ? selectedBase.price : 0;
             const topP = selectedTopping ? selectedTopping.price : 0;
-            const unitPrice = baseP + topP;
 
-            const basePts = selectedBase ? (selectedBase.points || 0) : 0;
-            const topPts = selectedTopping ? (selectedTopping.points || 0) : 0;
-            const earnedPoints = (basePts + topPts) * quantity;
+            // ... existing calculation ...
+            const earned = (selectedDessert.points || 0) + (selectedBase ? selectedBase.points : 0) + (selectedTopping ? selectedTopping.points : 0);
 
             cart.push({
-                dessertId: selectedDessert.id, dessertName: selectedDessert.name,
-                baseName: baseName, toppingName: toppingName,
-                quantity: quantity, unitPrice: unitPrice, totalPrice: unitPrice * quantity,
-                earnedPoints: earnedPoints
+                dessertId: selectedDessert.id,
+                dessertName: selectedDessert.name,
+                baseId: selectedBase ? selectedBase.id : null,
+                baseName: selectedBase ? selectedBase.name : '',
+                toppingId: selectedTopping ? selectedTopping.id : null,
+                toppingName: selectedTopping ? selectedTopping.name : '',
+                quantity: quantity,
+                unitPrice: baseP + topP,
+                totalPrice: (baseP + topP) * quantity,
+                earnedPoints: earned * quantity
             });
 
             saveCartToStorage();
-
-            quantity = 1;
-            document.getElementById("quantity").innerText = 1;
-            selectedBase = null; selectedTopping = null;
-            document.querySelectorAll('.menu-card.selected').forEach(c => c.classList.remove('selected'));
             updateCartBadge();
-            showSuccessToast("เพิ่มลงตะกร้าแล้ว");
 
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            document.getElementById("menu-selection").classList.add("hidden");
+            // UNLOCK (Reset UI)
+            document.querySelectorAll('.menu-card').forEach(c => c.classList.remove('selected'));
             document.getElementById("action-bar").classList.add("translate-y-full");
+            setTimeout(() => document.getElementById("action-bar").classList.add("hidden"), 300);
+            document.getElementById("menu-selection").classList.add("hidden");
+
+            selectedDessert = null;
+            selectedBase = null;
+            selectedTopping = null;
+
+            showSuccessToast("เพิ่มลงตะกร้าแล้ว");
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText || 'เพิ่มลงตะกร้า';
+            }
         }
+
+
 
         function updateCartBadge() {
             const badge = document.getElementById("cart-badge");
@@ -3167,13 +3194,21 @@
                 for (const item of cartItems) {
                     const dId = item.dessertId || item.id;
 
+                    console.log(`Checking stock for item: ${item.dessertName} (ID: ${dId})`); // DEBUG
+                    console.log(`Limits for this date:`, limitMap); // DEBUG
+                    console.log(`Default limits:`, defaultLimitMap); // DEBUG
+
                     // Priority: 1. Specific Daily Limit, 2. Default Limit, 3. Unlimited (0)
                     let limit = 0; // Default Unlimited
 
                     if (limitMap[dId] !== undefined) {
                         limit = limitMap[dId]; // Use specific date limit
+                        console.log(`Found specific limit for ID ${dId}: ${limit}`); // DEBUG
                     } else if (defaultLimitMap[dId] !== undefined && defaultLimitMap[dId] !== null) {
                         limit = defaultLimitMap[dId]; // Use default limit
+                        console.log(`Found default limit for ID ${dId}: ${limit}`); // DEBUG
+                    } else {
+                        console.log(`No limit found for ID ${dId}, using Unlimited (0)`); // DEBUG
                     }
 
                     // Limit 0 = Unlimited
@@ -3186,6 +3221,8 @@
 
                     const currentAmount = currentUsage[dId] || 0;
                     const newAmount = currentAmount + (item.quantity || 1);
+
+                    console.log(`Current usage: ${currentAmount}, New amount: ${newAmount}, Limit: ${limit}`); // DEBUG
 
                     if (newAmount > limit) {
                         const remaining = Math.max(0, limit - currentAmount);
@@ -3202,48 +3239,60 @@
         }
 
         async function checkout() {
-            console.log("Starting Checkout Process..."); // DEBUG
-            if (cart.length === 0) return showCustomAlert("ตะกร้าสินค้าว่างเปล่า", "ขออภัย", "cart-shopping", "red");
+            const btn = document.getElementById("checkout-btn");
 
-            // NEW: Check Shop Status here
-            if (shopStatus === 'closed') {
-                document.getElementById("shop-closed-overlay").classList.remove("hidden");
-                return;
-            }
-            if (shopStatus === 'maintenance') {
-                showCustomAlert("เว็บไซต์ปิดปรับปรุงชั่วคราว", "ขออภัย", "screwdriver-wrench", "orange");
-                return;
+            // LOCK BUTTON
+            if (btn) {
+                if (btn.disabled) return; // Prevent double click if already disabled
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังประมวลผล...';
             }
 
-            const date = document.getElementById("delivery-date").value;
-            if (!date) return showCustomAlert("กรุณาเลือกวันจัดส่งสินค้า", "ข้อมูลไม่ครบ", "calendar-xmark", "red");
+            try {
+                console.log("Starting Checkout Process..."); // DEBUG
+                if (cart.length === 0) throw new Error("ตะกร้าสินค้าว่างเปล่า");
 
-            // 🛡️ Check Daily Stock Limit
-            const stockCheck = await checkStockAvailability(date, cart);
-            if (!stockCheck.allowed) {
-                return showCustomAlert(stockCheck.message, "สินค้าหมด", "box-open", "red");
-            }
+                // NEW: Check Shop Status here
+                if (shopStatus === 'closed') {
+                    document.getElementById("shop-closed-overlay").classList.remove("hidden");
+                    return;
+                }
+                if (shopStatus === 'maintenance') {
+                    showCustomAlert("เว็บไซต์ปิดปรับปรุงชั่วคราว", "ขออภัย", "screwdriver-wrench", "orange");
+                    return;
+                }
 
-            const subtotal = cart.reduce((a, b) => a + b.totalPrice, 0);
-            const totalEarnedPoints = cart.reduce((a, b) => a + (b.earnedPoints || 0), 0);
+                const date = document.getElementById("delivery-date").value;
+                if (!date) throw new Error("กรุณาเลือกวันจัดส่งสินค้า");
 
-            let discount = 0;
-            if (selectedCoupon) {
-                if (selectedCoupon.discount_type === 'percent') discount = Math.floor(subtotal * selectedCoupon.discount_value / 100);
-                else discount = selectedCoupon.discount_value;
-                discount = Math.min(discount, subtotal);
-            }
-            const total = subtotal - discount;
+                // 🛡️ Check Daily Stock Limit
+                const stockCheck = await checkStockAvailability(date, cart);
+                if (!stockCheck.allowed) {
+                    showCustomAlert(stockCheck.message, "สินค้าหมด", "box-open", "red");
+                    return; // Stop here
+                }
 
-            // Save to DB
-            const { data, error } = await supabase.from("orders").insert([{
-                user_id: currentUser.id, line_id: currentUser.line_id, items: cart,
-                subtotal, discount, total_price: total,
-                earned_points: totalEarnedPoints,
-                delivery_date: date, status: "pending", coupon_code: selectedCoupon ? selectedCoupon.code : null
-            }]).select(); // Add .select() to get returned data for ID
+                const subtotal = cart.reduce((a, b) => a + b.totalPrice, 0);
+                const totalEarnedPoints = cart.reduce((a, b) => a + (b.earnedPoints || 0), 0);
 
-            if (!error) {
+                let discount = 0;
+                if (selectedCoupon) {
+                    if (selectedCoupon.discount_type === 'percent') discount = Math.floor(subtotal * selectedCoupon.discount_value / 100);
+                    else discount = selectedCoupon.discount_value;
+                    discount = Math.min(discount, subtotal);
+                }
+                const total = subtotal - discount;
+
+                // Save to DB
+                const { data, error } = await supabase.from("orders").insert([{
+                    user_id: currentUser.id, line_id: currentUser.line_id, items: cart,
+                    subtotal, discount, total_price: total,
+                    earned_points: totalEarnedPoints,
+                    delivery_date: date, status: "pending", coupon_code: selectedCoupon ? selectedCoupon.code : null
+                }]).select(); // Add .select() to get returned data for ID
+
+                if (error) throw error;
+
                 if (selectedCoupon && selectedCoupon.coupon_type === 'reward') {
                     await supabase.from("user_coupons").update({ is_used: true }).eq("id", selectedCoupon.id);
                 }
@@ -3267,8 +3316,23 @@
                 closeCart();
                 showSuccessToast("สั่งซื้อสำเร็จ!");
                 loadUserCoupons();
-            } else {
-                alert("Order Failed: " + error.message);
+
+            } catch (e) {
+                // Handle Errors
+                if (e.message !== "ตะกร้าสินค้าว่างเปล่า" && !e.message.includes("ปิดรับออเดอร์") && !e.message.includes("เลือกวัน")) {
+                    console.error(e);
+                    showCustomAlert(e.message || "เกิดข้อผิดพลาดในการสั่งซื้อ", "สั่งซื้อไม่สำเร็จ", "circle-xmark", "red");
+                } else if (e.message === "ตะกร้าสินค้าว่างเปล่า") {
+                    showCustomAlert("ตะกร้าสินค้าว่างเปล่า", "ขออภัย", "cart-shopping", "red");
+                } else if (e.message === "กรุณาเลือกวันจัดส่งสินค้า") {
+                    showCustomAlert("กรุณาเลือกวันจัดส่งสินค้า", "ข้อมูลไม่ครบ", "calendar-xmark", "red");
+                }
+            } finally {
+                // UNLOCK BUTTON
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>ยืนยันการสั่งซื้อ</span><i class="fa-solid fa-arrow-right"></i>';
+                }
             }
         }
 
