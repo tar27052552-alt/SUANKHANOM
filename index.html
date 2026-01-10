@@ -2190,6 +2190,7 @@
 
         async function addToCart() {
             const btn = document.getElementById("add-to-cart");
+            let originalText = btn ? btn.innerHTML : '';
 
             // NEW: Check Shop Status here
             if (shopStatus === 'closed') {
@@ -2204,53 +2205,51 @@
             if (btn) {
                 if (btn.disabled) return;
                 btn.disabled = true;
-                const originalText = btn.innerHTML;
                 btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-
-                // Simulate small delay if needed or just proceed (since sync action, just locking for rapid clicks)
-                // Actually addToCart is sync, but we use async ID generation potentially in future/animations
-                // For now, locking during the execution stack prevents event bubbling re-triggers if any
-                // But mostly useful if we had async validaton.
-                // Since it's sync, lets minimal-delay to prevent double-click:
-                await new Promise(r => setTimeout(r, 300));
             }
 
-            const baseP = selectedBase ? selectedBase.price : 0;
-            const topP = selectedTopping ? selectedTopping.price : 0;
+            try {
+                // Small delay to prevent double-click
+                await new Promise(r => setTimeout(r, 100));
 
-            // ... existing calculation ...
-            const earned = (selectedDessert.points || 0) + (selectedBase ? selectedBase.points : 0) + (selectedTopping ? selectedTopping.points : 0);
+                const baseP = selectedBase ? selectedBase.price : 0;
+                const topP = selectedTopping ? selectedTopping.price : 0;
+                const earned = (selectedDessert.points || 0) + (selectedBase ? selectedBase.points : 0) + (selectedTopping ? selectedTopping.points : 0);
 
-            cart.push({
-                dessertId: selectedDessert.id,
-                dessertName: selectedDessert.name,
-                baseId: selectedBase ? selectedBase.id : null,
-                baseName: selectedBase ? selectedBase.name : '',
-                toppingId: selectedTopping ? selectedTopping.id : null,
-                toppingName: selectedTopping ? selectedTopping.name : '',
-                quantity: quantity,
-                unitPrice: baseP + topP,
-                totalPrice: (baseP + topP) * quantity,
-                earnedPoints: earned * quantity
-            });
+                cart.push({
+                    dessertId: selectedDessert.id,
+                    dessertName: selectedDessert.name,
+                    baseId: selectedBase ? selectedBase.id : null,
+                    baseName: selectedBase ? selectedBase.name : '',
+                    toppingId: selectedTopping ? selectedTopping.id : null,
+                    toppingName: selectedTopping ? selectedTopping.name : '',
+                    quantity: quantity,
+                    unitPrice: baseP + topP,
+                    totalPrice: (baseP + topP) * quantity,
+                    earnedPoints: earned * quantity
+                });
 
-            saveCartToStorage();
-            updateCartBadge();
+                saveCartToStorage();
+                updateCartBadge();
 
-            // UNLOCK (Reset UI)
-            document.querySelectorAll('.menu-card').forEach(c => c.classList.remove('selected'));
-            document.getElementById("action-bar").classList.add("translate-y-full");
-            setTimeout(() => document.getElementById("action-bar").classList.add("hidden"), 300);
-            document.getElementById("menu-selection").classList.add("hidden");
+                // Reset UI
+                document.querySelectorAll('.menu-card').forEach(c => c.classList.remove('selected'));
+                document.getElementById("action-bar").classList.add("translate-y-full");
+                setTimeout(() => document.getElementById("action-bar").classList.add("hidden"), 300);
+                document.getElementById("menu-selection").classList.add("hidden");
 
-            selectedDessert = null;
-            selectedBase = null;
-            selectedTopping = null;
+                selectedDessert = null;
+                selectedBase = null;
+                selectedTopping = null;
 
-            showSuccessToast("เพิ่มลงตะกร้าแล้ว");
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalText || 'เพิ่มลงตะกร้า';
+                showSuccessToast("เพิ่มลงตะกร้าแล้ว");
+
+            } finally {
+                // UNLOCK BUTTON
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText || 'เพิ่มลงตะกร้า';
+                }
             }
         }
 
@@ -3194,8 +3193,8 @@
                 for (const item of cartItems) {
                     const dId = item.dessertId || item.id;
 
-                    // DEBUG ALERT
-                    // alert(`Debug Stock:\nDate: ${date}\nItem: ${item.dessertName} (ID: ${dId})\nLimitMap: ${JSON.stringify(limitMap)}\nLimit: ${limitMap[dId]}`);
+                    // DEBUG ALERT (ENABLED FOR TESTING)
+                    alert(`Debug Stock:\nDate: ${date}\nItem: ${item.dessertName} (ID: ${dId})\nLimitMap: ${JSON.stringify(limitMap)}\nLimit: ${limitMap[dId]}`);
 
                     // Priority: 1. Specific Daily Limit, 2. Default Limit, 3. Unlimited (0)
                     let limit = 0; // Default Unlimited
