@@ -3193,8 +3193,8 @@
                 for (const item of cartItems) {
                     const dId = item.dessertId || item.id;
 
-                    // DEBUG ALERT (ENABLED FOR TESTING)
-                    alert(`Debug Stock:\nDate: ${date}\nItem: ${item.dessertName} (ID: ${dId})\nLimitMap: ${JSON.stringify(limitMap)}\nLimit: ${limitMap[dId]}`);
+                    // DEBUG ALERT (DISABLED AFTER FIX)
+                    // alert(`Debug Stock:\nDate: ${date}\nItem: ${item.dessertName} (ID: ${dId})\nLimitMap: ${JSON.stringify(limitMap)}\nLimit: ${limitMap[dId]}`);
 
                     // Priority: 1. Specific Daily Limit, 2. Default Limit, 3. Unlimited (0)
                     let limit = 0; // Default Unlimited
@@ -5744,7 +5744,12 @@
                 d.setDate(d.getDate() + 1);
                 // Check if it's a delivery day (Mon, Wed, Fri)
                 if (deliveryDays.includes(d.getDay())) {
-                    const dateStr = d.toISOString().split('T')[0];
+                    // FIX: Use local date to match checkout query (same fix as loadDeliveryDates)
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const dateStr = `${year}-${month}-${day}`;
+
                     if (!blockedDates.includes(dateStr)) {
                         const opt = document.createElement('option');
                         const label = `${days[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
