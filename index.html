@@ -2253,19 +2253,22 @@
            `;
             } else {
                 container.innerHTML = cart.map((item, idx) => `
-             <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+             <div class="relative flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100 group pr-10 hover:border-indigo-200 transition-colors">
+                <button onclick="removeFromCart(${idx})" class="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition transform hover:scale-110">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
                 <div>
                    <div class="font-bold text-slate-800 text-sm">${item.dessertName}</div>
                    <div class="text-xs text-slate-500">${item.baseName} + ${item.toppingName}</div>
                    <div class="text-xs font-semibold text-indigo-600 mt-1">${item.unitPrice} ฿/ชิ้น</div>
                 </div>
                 <div class="flex flex-col items-end gap-2">
-                   <div class="flex items-center gap-2 bg-white rounded-lg border border-slate-200 px-1 py-0.5">
-                      <button onclick="updateCartItem(${idx}, -1)" class="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-red-500"><i class="fa-solid fa-minus text-xs"></i></button>
-                      <span class="text-sm font-bold w-4 text-center">${item.quantity}</span>
-                      <button onclick="updateCartItem(${idx}, 1)" class="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-green-500"><i class="fa-solid fa-plus text-xs"></i></button>
+                   <div class="flex items-center gap-2 bg-white rounded-lg border border-slate-200 px-1 py-0.5 shadow-sm">
+                      <button onclick="updateCartItem(${idx}, -1)" class="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-red-500 active:scale-90 transition"><i class="fa-solid fa-minus text-xs"></i></button>
+                      <span class="text-sm font-bold w-5 text-center select-none">${item.quantity}</span>
+                      <button onclick="updateCartItem(${idx}, 1)" class="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-green-500 active:scale-90 transition"><i class="fa-solid fa-plus text-xs"></i></button>
                    </div>
-                   <div class="text-sm font-bold">${item.totalPrice} ฿</div>
+                   <div class="text-sm font-bold text-slate-700">${item.totalPrice} ฿</div>
                 </div>
              </div>
            `).join('');
@@ -2274,18 +2277,32 @@
             loadDeliveryDates();
         }
 
+
+        function removeFromCart(index) {
+            // Confirm delete
+            // Using a non-blocking confirm if possible, but browser confirm is safest for now
+            if (confirm("คุณต้องการลบสินค้านี้ออกจากตะกร้าใช่หรือไม่?")) {
+                cart.splice(index, 1);
+                saveCartToStorage();
+                renderCart();
+                updateCartBadge();
+                showSuccessToast("ลบสินค้าเรียบร้อย");
+            }
+        }
+
         function updateCartItem(idx, delta) {
             if (cart[idx].quantity + delta < 1) {
-                if (confirm("ลบสินค้านี้?")) cart.splice(idx, 1);
+                // If reducing to 0, ask to delete
+                removeFromCart(idx);
             } else {
                 const unitPoints = cart[idx].earnedPoints / cart[idx].quantity;
                 cart[idx].quantity += delta;
                 cart[idx].totalPrice = cart[idx].unitPrice * cart[idx].quantity;
                 cart[idx].earnedPoints = unitPoints * cart[idx].quantity;
+                saveCartToStorage();
+                renderCart();
+                updateCartBadge();
             }
-            saveCartToStorage();
-            renderCart();
-            updateCartBadge();
         }
 
         async function loadDeliveryDates() {
@@ -3049,7 +3066,8 @@
         }
 
         async function checkout() {
-            if (cart.length === 0) return;
+            console.log("Starting Checkout Process..."); // DEBUG
+            if (cart.length === 0) return alert("ตะกร้าสินค้าว่างเปล่า");
 
             // NEW: Check Shop Status here
             if (shopStatus === 'closed') {
