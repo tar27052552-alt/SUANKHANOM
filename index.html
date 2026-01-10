@@ -2322,7 +2322,12 @@
             while (count < 8) {
                 d.setDate(d.getDate() + 1);
                 if (deliveryDays.includes(d.getDay())) {
-                    const dateStr = d.toISOString().split('T')[0];
+                    // FIX: Use local date to avoid string mismatch
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const dateStr = `${year}-${month}-${day}`;
+
                     if (!blockedDates.includes(dateStr)) {
                         const opt = document.createElement("option");
                         const label = `${days[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
@@ -3340,7 +3345,12 @@
             while (pastCount < 2) {
                 pastDate.setDate(pastDate.getDate() - 1);
                 if (deliveryDays.includes(pastDate.getDay())) {
-                    const dateStr = pastDate.toISOString().split('T')[0];
+                    // FIX: Use local date
+                    const year = pastDate.getFullYear();
+                    const month = String(pastDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(pastDate.getDate()).padStart(2, '0');
+                    const dateStr = `${year}-${month}-${day}`;
+
                     const label = `${days[pastDate.getDay()]} ${pastDate.getDate()}/${pastDate.getMonth() + 1}/${pastDate.getFullYear() + 543}`;
                     allDates.unshift({ value: dateStr, label: label, isPast: true });
                     pastCount++;
@@ -3353,7 +3363,12 @@
             while (futureCount < 8) {
                 futureDate.setDate(futureDate.getDate() + 1);
                 if (deliveryDays.includes(futureDate.getDay())) {
-                    const dateStr = futureDate.toISOString().split('T')[0];
+                    // FIX: Use local date
+                    const year = futureDate.getFullYear();
+                    const month = String(futureDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(futureDate.getDate()).padStart(2, '0');
+                    const dateStr = `${year}-${month}-${day}`;
+
                     if (!blockedDates.includes(dateStr)) {
                         const label = `${days[futureDate.getDay()]} ${futureDate.getDate()}/${futureDate.getMonth() + 1}/${futureDate.getFullYear() + 543}`;
                         allDates.push({ value: dateStr, label: label, isPast: false });
