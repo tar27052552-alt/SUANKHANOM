@@ -3065,6 +3065,95 @@
             }
         }
 
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' });
+        }
+
+        // 🛡️ Check Stock Availability (for Checkout)
+        async function checkStockAvailability(date, cartItems) {
+            try {
+                // 1. Get limits from daily_limits table for this date
+                const { data: limits } = await supabase.from('daily_limits')
+                    .select('dessert_id, limit_quantity')
+                    .eq('date', date);
+
+                const limitMap = {};
+                if (limits) {
+                    limits.forEach(l => limitMap[l.dessert_id] = l.limit_quantity);
+                }
+
+                // 1.1 Get default limits from desserts table (fallback)
+                const { data: desserts } = await supabase.from('desserts')
+                    .select('id, default_limit');
+
+                const defaultLimitMap = {};
+                if (desserts) {
+                    desserts.forEach(d => defaultLimitMap[d.id] = d.default_limit);
+                }
+
+                // 2. Get existing orders for that date to count usage
+                const { data: orders } = await supabase.from('orders')
+                    .select('items')
+                    .eq('delivery_date', date)
+                    .neq('status', 'cancelled'); // Don't count cancelled orders
+
+                // 3. Calculate current usage
+                const currentUsage = {};
+                orders?.forEach(order => {
+                    let items = order.items;
+                    try { if (typeof items === 'string') items = JSON.parse(items); } catch (e) { } // Handle potential JSON string
+
+                    // Handle both array and object format if legacy
+                    if (Array.isArray(items)) {
+                        items.forEach(item => {
+                            const dId = item.dessertId || item.id;
+                            if (dId) {
+                                currentUsage[dId] = (currentUsage[dId] || 0) + (item.quantity || 1);
+                            }
+                        });
+                    }
+                });
+
+                // 4. Check against limits
+                for (const item of cartItems) {
+                    const dId = item.dessertId || item.id;
+
+                    // Priority: 1. Specific Daily Limit, 2. Default Limit, 3. Unlimited (0)
+                    let limit = 0; // Default Unlimited
+
+                    if (limitMap[dId] !== undefined) {
+                        limit = limitMap[dId]; // Use specific date limit
+                    } else if (defaultLimitMap[dId] !== undefined && defaultLimitMap[dId] !== null) {
+                        limit = defaultLimitMap[dId]; // Use default limit
+                    }
+
+                    // Limit 0 = Unlimited
+                    if (limit === 0) continue;
+
+                    // Limit -1 = Closed for this item
+                    if (limit === -1) {
+                        return { allowed: false, message: `"${item.dessertName || item.name}" ปิดรับออเดอร์แล้วสำหรับวันที่ ${formatDate(date)}` };
+                    }
+
+                    const currentAmount = currentUsage[dId] || 0;
+                    const newAmount = currentAmount + (item.quantity || 1);
+
+                    if (newAmount > limit) {
+                        const remaining = Math.max(0, limit - currentAmount);
+                        return { allowed: false, message: `"${item.dessertName || item.name}" วันที่ ${formatDate(date)} เหลือว่างเพียง ${remaining} ชิ้น` };
+                    }
+                }
+
+                return { allowed: true };
+
+            } catch (error) {
+                console.error('Error checking stock:', error);
+                return { allowed: true }; // Allow on error to prevent blocking, but log it
+            }
+        }
+
         async function checkout() {
             console.log("Starting Checkout Process..."); // DEBUG
             if (cart.length === 0) return alert("ตะกร้าสินค้าว่างเปล่า");
@@ -4666,88 +4755,7 @@
                 loadAdminCoupons();
             }
 
-            // 🛡️ Check Stock Availability (for Checkout) - Updated for daily_limits + default_limit
-            async function checkStockAvailability(date, cartItems) {
-                try {
-                    // 1. Get limits from daily_limits table for this date
-                    const { data: limits } = await supabase.from('daily_limits')
-                        .select('dessert_id, limit_quantity')
-                        .eq('date', date);
 
-                    const limitMap = {};
-                    if (limits) {
-                        limits.forEach(l => limitMap[l.dessert_id] = l.limit_quantity);
-                    }
-
-                    // 1.1 Get default limits from desserts table (fallback)
-                    const { data: desserts } = await supabase.from('desserts')
-                        .select('id, default_limit');
-
-                    const defaultLimitMap = {};
-                    if (desserts) {
-                        desserts.forEach(d => defaultLimitMap[d.id] = d.default_limit);
-                    }
-
-                    // 2. Get existing orders for that date to count usage
-                    const { data: orders } = await supabase.from('orders')
-                        .select('items')
-                        .eq('delivery_date', date)
-                        .neq('status', 'cancelled'); // Don't count cancelled orders
-
-                    // 3. Calculate current usage
-                    const currentUsage = {};
-                    orders?.forEach(order => {
-                        let items = order.items;
-                        try { if (typeof items === 'string') items = JSON.parse(items); } catch (e) { } // Handle potential JSON string
-
-                        // Handle both array and object format if legacy
-                        if (Array.isArray(items)) {
-                            items.forEach(item => {
-                                const dId = item.dessertId || item.id;
-                                if (dId) {
-                                    currentUsage[dId] = (currentUsage[dId] || 0) + (item.quantity || 1);
-                                }
-                            });
-                        }
-                    });
-
-                    // 4. Check against limits
-                    for (const item of cartItems) {
-                        const dId = item.dessertId || item.id;
-
-                        // Priority: 1. Specific Daily Limit, 2. Default Limit, 3. Unlimited (0)
-                        let limit = 0; // Default Unlimited
-
-                        if (limitMap[dId] !== undefined) {
-                            limit = limitMap[dId]; // Use specific date limit
-                        } else if (defaultLimitMap[dId] !== undefined && defaultLimitMap[dId] !== null) {
-                            limit = defaultLimitMap[dId]; // Use default limit
-                        }
-
-                        // Limit 0 = Unlimited
-                        if (limit === 0) continue;
-
-                        // Limit -1 = Closed for this item
-                        if (limit === -1) {
-                            return { allowed: false, message: `"${item.dessertName || item.name}" ปิดรับออเดอร์แล้วสำหรับวันที่ ${formatDate(date)}` };
-                        }
-
-                        const currentAmount = currentUsage[dId] || 0;
-                        const newAmount = currentAmount + (item.quantity || 1);
-
-                        if (newAmount > limit) {
-                            const remaining = Math.max(0, limit - currentAmount);
-                            return { allowed: false, message: `"${item.dessertName || item.name}" วันที่ ${formatDate(date)} เหลือว่างเพียง ${remaining} ชิ้น` };
-                        }
-                    }
-
-                    return { allowed: true };
-
-                } catch (error) {
-                    console.error('Error checking stock:', error);
-                    return { allowed: true }; // Allow on error to prevent blocking, but log it
-                }
-            }
 
             async function deleteReward(id) {
                 if (!confirm("ลบของรางวัลนี้?")) return;
