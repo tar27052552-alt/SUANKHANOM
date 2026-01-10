@@ -1004,11 +1004,11 @@
                 <p id="custom-confirm-message" class="text-slate-500"></p>
             </div>
             <div class="flex gap-3">
-                <button onclick="handleCustomConfirm(false)"
+                <button id="custom-confirm-cancel-btn" onclick="handleCustomConfirm(false)"
                     class="flex-1 py-3 px-4 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition">
                     ยกเลิก
                 </button>
-                <button onclick="handleCustomConfirm(true)"
+                <button id="custom-confirm-ok-btn" onclick="handleCustomConfirm(true)"
                     class="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-semibold hover:opacity-90 transition shadow-lg shadow-purple-200">
                     ยืนยัน
                 </button>
@@ -2278,10 +2278,16 @@
         }
 
 
-        function removeFromCart(index) {
+        async function removeFromCart(index) {
             // Confirm delete
-            // Using a non-blocking confirm if possible, but browser confirm is safest for now
-            if (confirm("คุณต้องการลบสินค้านี้ออกจากตะกร้าใช่หรือไม่?")) {
+            const confirmed = await showCustomConfirm(
+                "คุณต้องการลบสินค้านี้ออกจากตะกร้าใช่หรือไม่?",
+                "ลบสินค้า",
+                "trash-can",
+                "red"
+            );
+
+            if (confirmed) {
                 cart.splice(index, 1);
                 saveCartToStorage();
                 renderCart();
@@ -2290,7 +2296,7 @@
             }
         }
 
-        function updateCartItem(idx, delta) {
+        async function updateCartItem(idx, delta) {
             if (cart[idx].quantity + delta < 1) {
                 // If reducing to 0, ask to delete
                 removeFromCart(idx);
@@ -2479,7 +2485,7 @@
             }
         }
 
-        // Custom Confirm Modal Functions
+        // Custom Confirm/Alert Modal Functions
         let customConfirmResolve = null;
 
         function showCustomConfirm(message, title = 'ยืนยันการดำเนินการ', icon = 'gift', iconBg = 'purple') {
@@ -2490,11 +2496,47 @@
                 const titleEl = document.getElementById('custom-confirm-title');
                 const messageEl = document.getElementById('custom-confirm-message');
                 const iconEl = document.getElementById('custom-confirm-icon');
+                const cancelBtn = document.getElementById("custom-confirm-cancel-btn");
+                const okBtn = document.getElementById("custom-confirm-ok-btn");
 
                 titleEl.textContent = title;
                 messageEl.textContent = message;
                 iconEl.className = `w-16 h-16 mx-auto mb-4 rounded-full bg-${iconBg}-100 flex items-center justify-center`;
                 iconEl.innerHTML = `<i class="fa-solid fa-${icon} text-3xl text-${iconBg}-500"></i>`;
+
+                // Setup Buttons for Confirm
+                cancelBtn.classList.remove("hidden");
+                okBtn.innerText = "ยืนยัน";
+                okBtn.className = `flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-${iconBg}-500 to-${iconBg}-600 text-white font-semibold hover:opacity-90 transition shadow-lg`;
+
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    content.classList.remove('scale-95', 'opacity-0');
+                    content.classList.add('scale-100', 'opacity-100');
+                }, 10);
+            });
+        }
+
+        function showCustomAlert(message, title = 'แจ้งเตือน', icon = 'circle-info', iconBg = 'blue') {
+            return new Promise((resolve) => {
+                customConfirmResolve = resolve;
+                const modal = document.getElementById('custom-confirm-modal');
+                const content = document.getElementById('custom-confirm-content');
+                const titleEl = document.getElementById('custom-confirm-title');
+                const messageEl = document.getElementById('custom-confirm-message');
+                const iconEl = document.getElementById('custom-confirm-icon');
+                const cancelBtn = document.getElementById("custom-confirm-cancel-btn");
+                const okBtn = document.getElementById("custom-confirm-ok-btn");
+
+                titleEl.textContent = title;
+                messageEl.textContent = message;
+                iconEl.className = `w-16 h-16 mx-auto mb-4 rounded-full bg-${iconBg}-100 flex items-center justify-center`;
+                iconEl.innerHTML = `<i class="fa-solid fa-${icon} text-3xl text-${iconBg}-500"></i>`;
+
+                // Setup Buttons for Alert
+                cancelBtn.classList.add("hidden");
+                okBtn.innerText = "ตกลง";
+                okBtn.className = `flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-${iconBg}-500 to-${iconBg}-600 text-white font-semibold hover:opacity-90 transition shadow-lg`;
 
                 modal.classList.remove('hidden');
                 setTimeout(() => {
@@ -3156,7 +3198,7 @@
 
         async function checkout() {
             console.log("Starting Checkout Process..."); // DEBUG
-            if (cart.length === 0) return alert("ตะกร้าสินค้าว่างเปล่า");
+            if (cart.length === 0) return showCustomAlert("ตะกร้าสินค้าว่างเปล่า", "ขออภัย", "cart-shopping", "red");
 
             // NEW: Check Shop Status here
             if (shopStatus === 'closed') {
@@ -3164,18 +3206,17 @@
                 return;
             }
             if (shopStatus === 'maintenance') {
-                // Actually main app shouldn't be visible, but double check
-                alert("เว็บไซต์ปิดปรับปรุง");
+                showCustomAlert("เว็บไซต์ปิดปรับปรุงชั่วคราว", "ขออภัย", "screwdriver-wrench", "orange");
                 return;
             }
 
             const date = document.getElementById("delivery-date").value;
-            if (!date) return alert("เลือกวันส่งด้วยครับ");
+            if (!date) return showCustomAlert("กรุณาเลือกวันจัดส่งสินค้า", "ข้อมูลไม่ครบ", "calendar-xmark", "red");
 
             // 🛡️ Check Daily Stock Limit
             const stockCheck = await checkStockAvailability(date, cart);
             if (!stockCheck.allowed) {
-                return alert("ขออภัย: " + stockCheck.message);
+                return showCustomAlert(stockCheck.message, "สินค้าหมด", "box-open", "red");
             }
 
             const subtotal = cart.reduce((a, b) => a + b.totalPrice, 0);
@@ -4758,21 +4799,21 @@
 
 
             async function deleteReward(id) {
-                if (!confirm("ลบของรางวัลนี้?")) return;
+                if (!await showCustomConfirm("ต้องการลบของรางวัลนี้?", "ยืนยันการลบ", "trash-can", "red")) return;
                 await supabase.from("rewards").delete().eq("id", id);
                 showSuccessToast("ลบรางวัลแล้ว");
                 loadAdminRewards();
             }
 
             async function deleteCoupon(id) {
-                if (!confirm("ลบคูปองนี้?")) return;
+                if (!await showCustomConfirm("ต้องการลบคูปองนี้?", "ยืนยันการลบ", "trash-can", "red")) return;
                 await supabase.from("coupons").delete().eq("id", id);
                 showSuccessToast("ลบคูปองแล้ว");
                 loadAdminCoupons();
             }
 
             async function deleteDessert(id) {
-                if (!confirm("ลบเมนูนี้?")) return;
+                if (!await showCustomConfirm("ต้องการลบเมนูนี้?", "ยืนยันการลบ", "trash-can", "red")) return;
                 await supabase.from("desserts").delete().eq("id", id);
                 showSuccessToast("ลบเมนูแล้ว");
                 loadAdminDesserts();
@@ -4780,7 +4821,7 @@
             }
 
             async function deleteBrownieItem(id) {
-                if (!confirm("ลบส่วนประกอบนี้?")) return;
+                if (!await showCustomConfirm("ต้องการลบส่วนประกอบนี้?", "ยืนยันการลบ", "trash-can", "red")) return;
                 await supabase.from("brownie_items").delete().eq("id", id);
                 showSuccessToast("ลบแล้ว");
                 if (currentAdminDessertId) loadBrownieMenus(currentAdminDessertId);
