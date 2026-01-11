@@ -965,9 +965,9 @@
                         <span id="cart-total" class="text-2xl font-bold text-indigo-600">0 ฿</span>
                     </div>
                 </div>
-                <button onclick="checkout()"
+                <button id="checkout-btn" onclick="checkout()"
                     class="btn-primary w-full py-4 rounded-xl font-bold text-lg shadow-lg shadow-indigo-200 active:scale-95 transition-transform">
-                    ยืนยันการสั่งซื้อ
+                    <span>ยืนยันการสั่งซื้อ</span><i class="fa-solid fa-arrow-right"></i>
                 </button>
             </div>
         </div>
@@ -2018,6 +2018,12 @@
                     points: 0,
                     total_points: 0
                 }]);
+            } else {
+                // Update existing user profile to keep it fresh
+                await supabase.from("users").update({
+                    display_name: profile.displayName,
+                    picture_url: profile.pictureUrl
+                }).eq("line_id", profile.userId);
             }
         }
 
@@ -2209,8 +2215,6 @@
             }
 
             try {
-                // Small delay to prevent double-click
-                await new Promise(r => setTimeout(r, 100));
 
                 const baseP = selectedBase ? selectedBase.price : 0;
                 const topP = selectedTopping ? selectedTopping.price : 0;
@@ -2593,7 +2597,9 @@
             }, 200);
         }
 
+        let isRedeemingReward = false;
         async function redeemReward(id) {
+            if (isRedeemingReward) return; // Prevent double-click
             const r = availableRewards.find(x => x.id === id);
             const confirmed = await showCustomConfirm(
                 `ต้องการแลก "${r.name}" ด้วย ${r.points_required} แต้มหรือไม่?`,
@@ -2602,18 +2608,23 @@
                 'purple'
             );
             if (!confirmed) return;
-            const { error } = await supabase.from("users").update({ points: userPoints - r.points_required }).eq("id", currentUser.id);
-            if (!error) {
-                const code = "REW-" + Math.random().toString(36).substr(2, 6).toUpperCase();
-                await supabase.from("user_coupons").insert([{
-                    user_id: currentUser.id, reward_id: id, coupon_code: code
-                }]);
-                userPoints -= r.points_required;
-                document.getElementById("userPoints").innerText = userPoints;
-                document.getElementById("modal-user-points").innerText = userPoints;
-                showSuccessToast("แลกรางวัลสำเร็จ!");
-                loadUserCoupons();
-                closeRewards();
+            isRedeemingReward = true;
+            try {
+                const { error } = await supabase.from("users").update({ points: userPoints - r.points_required }).eq("id", currentUser.id);
+                if (!error) {
+                    const code = "REW-" + Math.random().toString(36).substr(2, 6).toUpperCase();
+                    await supabase.from("user_coupons").insert([{
+                        user_id: currentUser.id, reward_id: id, coupon_code: code
+                    }]);
+                    userPoints -= r.points_required;
+                    document.getElementById("userPoints").innerText = userPoints;
+                    document.getElementById("modal-user-points").innerText = userPoints;
+                    showSuccessToast("แลกรางวัลสำเร็จ!");
+                    loadUserCoupons();
+                    closeRewards();
+                }
+            } finally {
+                isRedeemingReward = false;
             }
         }
 
@@ -3811,7 +3822,7 @@
                     listContainer.innerHTML = orders.map(o => `
                     <div class="flex items-center justify-between p-2 border-b border-slate-100 last:border-0">
                        <div class="flex items-center gap-2">
-                          <img src="${o.users?.picture_url || 'https://cdn-icons-png.flaticon.com/512/847/847969.png'}" class="w-8 h-8 rounded-full object-cover">
+                          <img src="${o.users?.picture_url || 'https://cdn-icons-png.flaticon.com/512/847/847969.png'}" class="w-8 h-8 rounded-full object-cover" onerror="this.src='https://cdn-icons-png.flaticon.com/512/847/847969.png'">
                           <div>
                              <div class="text-sm font-bold text-slate-700">${o.users?.display_name || 'Unknown'}</div>
                              <div class="text-xs text-slate-400">${new Date(o.created_at).toLocaleDateString('th-TH')}</div>
@@ -4060,7 +4071,7 @@
                 return `
            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3 relative hover:shadow-md transition-all">
                <div class="flex items-center gap-3">
-                   <img src="${u.picture_url || 'https://cdn-icons-png.flaticon.com/512/847/847969.png'}" class="w-10 h-10 rounded-full object-cover border border-slate-100 shadow-sm">
+                   <img src="${u.picture_url || 'https://cdn-icons-png.flaticon.com/512/847/847969.png'}" class="w-10 h-10 rounded-full object-cover border border-slate-100 shadow-sm" onerror="this.src='https://cdn-icons-png.flaticon.com/512/847/847969.png'">
                    <div class="flex-1 min-w-0">
                        <div class="font-bold text-slate-800 flex flex-wrap items-center gap-1 text-sm">
                             <span class="truncate max-w-[120px]">${u.display_name || 'Guest'}</span>
@@ -4197,6 +4208,7 @@
 
                 // 1. แสดงข้อมูลพื้นฐานทันที (ไม่ต้องรอโหลด)
                 document.getElementById("ud-pic").src = user.picture_url || 'https://cdn-icons-png.flaticon.com/512/847/847969.png';
+                document.getElementById("ud-pic").onerror = function () { this.src = 'https://cdn-icons-png.flaticon.com/512/847/847969.png'; };
                 document.getElementById("ud-name").innerText = user.display_name || 'ไม่ระบุชื่อ';
                 document.getElementById("ud-line-id").innerText = 'Line ID: ' + user.line_id;
                 document.getElementById("ud-points").innerText = (user.points || 0).toLocaleString();
@@ -4988,14 +5000,21 @@
                 toggleModal('ban-user-modal', true);
             }
 
+            let isSubmittingBan = false;
             async function submitBanUser() {
-                const userId = document.getElementById("ban-user-id").value;
-                const reason = document.getElementById("ban-reason").value || "ไม่ระบุสาเหตุ";
+                if (isSubmittingBan) return; // Prevent double-click
+                isSubmittingBan = true;
+                try {
+                    const userId = document.getElementById("ban-user-id").value;
+                    const reason = document.getElementById("ban-reason").value || "ไม่ระบุสาเหตุ";
 
-                await supabase.from("users").update({ is_banned: true, ban_reason: reason }).eq("id", userId);
-                toggleModal('ban-user-modal', false);
-                showSuccessToast("แบนผู้ใช้แล้ว");
-                loadAdminUsers();
+                    await supabase.from("users").update({ is_banned: true, ban_reason: reason }).eq("id", userId);
+                    toggleModal('ban-user-modal', false);
+                    showSuccessToast("แบนผู้ใช้แล้ว");
+                    loadAdminUsers();
+                } finally {
+                    isSubmittingBan = false;
+                }
             }
 
             async function unbanUser(userId) {
@@ -5116,41 +5135,50 @@
             document.getElementById("level-" + level).checked = true;
         }
 
+        let isSubmittingAddPoints = false;
         async function submitAddPoints() {
-            const userId = document.getElementById("add-points-user-id").value;
-            const walletAdj = parseInt(document.getElementById("wallet-points-adj").value) || 0;
-            const rankAdj = parseInt(document.getElementById("rank-points-adj").value) || 0;
+            if (isSubmittingAddPoints) return; // Prevent double-click
+            isSubmittingAddPoints = true;
+            try {
+                const userId = document.getElementById("add-points-user-id").value;
+                const walletAdj = parseInt(document.getElementById("wallet-points-adj").value) || 0;
+                const rankAdj = parseInt(document.getElementById("rank-points-adj").value) || 0;
 
-            const { data: user } = await supabase.from("users").select("points, total_points, rank").eq("id", userId).single();
-            if (!user) return;
+                const { data: user } = await supabase.from("users").select("points, total_points, rank").eq("id", userId).single();
+                if (!user) return;
 
-            const newPoints = Math.max(0, (user.points || 0) + walletAdj);
-            const newTotal = Math.max(0, (user.total_points || 0) + rankAdj);
+                const newPoints = Math.max(0, (user.points || 0) + walletAdj);
+                const newTotal = Math.max(0, (user.total_points || 0) + rankAdj);
 
-            // Calculate new rank based on new total_points (skip if user is admin)
-            let newRank = user.rank;
-            if (user.rank !== 'admin') {
-                newRank = getRankNameByPoints(newTotal);
+                // Calculate new rank based on new total_points (skip if user is admin)
+                let newRank = user.rank;
+                if (user.rank !== 'admin') {
+                    newRank = getRankNameByPoints(newTotal);
+                }
+
+                // Update points, total_points AND rank in database
+                const { error } = await supabase.from("users").update({
+                    points: newPoints,
+                    total_points: newTotal,
+                    rank: newRank
+                }).eq("id", userId);
+
+                if (error) {
+                    alert("Error: " + error.message);
+                    return;
+                }
+
+                toggleModal('add-points-modal', false);
+                showSuccessToast(`อัปเดตแต้มเรียบร้อย (ยศ: ${newRank})`);
+                loadAdminUsers();
+            } finally {
+                isSubmittingAddPoints = false;
             }
-
-            // Update points, total_points AND rank in database
-            const { error } = await supabase.from("users").update({
-                points: newPoints,
-                total_points: newTotal,
-                rank: newRank
-            }).eq("id", userId);
-
-            if (error) {
-                alert("Error: " + error.message);
-                return;
-            }
-
-            toggleModal('add-points-modal', false);
-            showSuccessToast(`อัปเดตแต้มเรียบร้อย (ยศ: ${newRank})`);
-            loadAdminUsers();
         }
 
+        let isSubmittingGiveCoupon = false;
         async function submitGiveCoupon() {
+            if (isSubmittingGiveCoupon) return; // Prevent double-click
             const userId = document.getElementById("give-coupon-user-id").value;
             const rewardId = document.getElementById("reward-select").value;
 
@@ -5159,11 +5187,16 @@
                 return;
             }
 
-            const code = "GIFT-" + Math.random().toString(36).substr(2, 6).toUpperCase();
-            await supabase.from("user_coupons").insert([{ user_id: userId, reward_id: rewardId, coupon_code: code }]);
+            isSubmittingGiveCoupon = true;
+            try {
+                const code = "GIFT-" + Math.random().toString(36).substr(2, 6).toUpperCase();
+                await supabase.from("user_coupons").insert([{ user_id: userId, reward_id: rewardId, coupon_code: code }]);
 
-            toggleModal('give-coupon-modal', false);
-            showSuccessToast("มอบรางวัลสำเร็จ");
+                toggleModal('give-coupon-modal', false);
+                showSuccessToast("มอบรางวัลสำเร็จ");
+            } finally {
+                isSubmittingGiveCoupon = false;
+            }
         }
 
 
@@ -5257,7 +5290,9 @@
             toggleModal('adjust-level-modal', true);
         }
 
+        let isSubmittingAdjustLevel = false;
         async function submitAdjustLevel() {
+            if (isSubmittingAdjustLevel) return; // Prevent double-click
             const lineId = document.getElementById("adjust-level-line-id").value;
             const userId = document.getElementById("adjust-level-user-id").value;
             const selectedLevel = document.querySelector('input[name="user_level"]:checked')?.value;
@@ -5267,30 +5302,35 @@
                 return;
             }
 
-            const newRank = selectedLevel === 'admin' ? 'admin' : getRankNameByPoints(0);
+            isSubmittingAdjustLevel = true;
+            try {
+                const newRank = selectedLevel === 'admin' ? 'admin' : getRankNameByPoints(0);
 
-            // Update database
-            const { error } = await supabase.from("users").update({ rank: newRank }).eq("line_id", lineId);
+                // Update database
+                const { error } = await supabase.from("users").update({ rank: newRank }).eq("line_id", lineId);
 
-            if (error) {
-                console.error("Error updating rank:", error);
-                alert("บันทึกไม่สำเร็จ: " + error.message);
-                return;
-            }
-
-            // Update local adminList
-            if (selectedLevel === 'admin') {
-                if (!adminList.includes(lineId)) {
-                    adminList.push(lineId);
+                if (error) {
+                    console.error("Error updating rank:", error);
+                    alert("บันทึกไม่สำเร็จ: " + error.message);
+                    return;
                 }
-            } else {
-                adminList = adminList.filter(id => id !== lineId && id !== SUPER_ADMIN_ID);
-                if (!adminList.includes(SUPER_ADMIN_ID)) adminList.push(SUPER_ADMIN_ID);
-            }
 
-            toggleModal('adjust-level-modal', false);
-            showSuccessToast("บันทึกระดับสมาชิกเรียบร้อย");
-            loadAdminUsers();
+                // Update local adminList
+                if (selectedLevel === 'admin') {
+                    if (!adminList.includes(lineId)) {
+                        adminList.push(lineId);
+                    }
+                } else {
+                    adminList = adminList.filter(id => id !== lineId && id !== SUPER_ADMIN_ID);
+                    if (!adminList.includes(SUPER_ADMIN_ID)) adminList.push(SUPER_ADMIN_ID);
+                }
+
+                toggleModal('adjust-level-modal', false);
+                showSuccessToast("บันทึกระดับสมาชิกเรียบร้อย");
+                loadAdminUsers();
+            } finally {
+                isSubmittingAdjustLevel = false;
+            }
         }
 
         async function openUserDetailsModal(userId) {
